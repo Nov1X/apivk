@@ -1,0 +1,7 @@
+README.txt
+setup.py
+apivk/__init__.py
+apivk.egg-info/PKG-INFO
+apivk.egg-info/SOURCES.txt
+apivk.egg-info/dependency_links.txt
+apivk.egg-info/top_level.txt
