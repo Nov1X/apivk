@@ -3,7 +3,7 @@ import aiohttp
 import json
 import asyncio
 from requests import get
-from os.path import exists
+# from os.path import exists
 from typing import Tuple, List
 
 if __name__ == '__main__':
@@ -43,6 +43,7 @@ class API:
                     for _k, _v in _args.items():
                         _r += str(_k) + '=' + str(_v) + '&'
                     return _r[:-1]
+
                 return lambda _r=_r, _token=_token, **_kwargs: self.api.request(form(_kwargs, _r), token=_token)
 
         with get(f'https://api.vk.com/method/utils.getServerTime?access_token={token}&v={v}') as _req:
@@ -52,7 +53,7 @@ class API:
             self.__id = json.loads(_req.text)['response'][0]['id']
         self.__token = token
         self.__v = v
-        self.__hcom = {}
+        self.__hcom = {}  # словарь команда:метод
         self.__attrwrapper = _requester
 
     @staticmethod
@@ -68,7 +69,8 @@ class API:
         return await self.__request("https://api.vk.com/method/" +
                                     __t + f'{"&access_token=" + self.__token if not token else "&access_token=" + str(token)}&v={self.__v}')
 
-    def MessageHandler(self, *args, arg=0, all=False):
+    # декоратор для методов сообщений
+    def MessageHandler(self, *args, arg=0, _all=False):
         if callable(args[0]):
             raise TypeError("You must add commands in list or one command (String) to positional arguments")
         if not isinstance(args[0], list) and not isinstance(args[0], str):
@@ -90,9 +92,11 @@ class API:
 
         return binder
 
+    # TODO: Обработка событий
     def __EventHandler(self, _event: str):
         pass
 
+    # Метод получения адреса сервера LongPoll
     async def __getLongPoll(self) -> (str, int):
         while True:
             _response = await self.__request(
@@ -104,6 +108,8 @@ class API:
             _response = _response['response']
             return f'{_response["server"]}?act=a_check&key={_response["key"]}&', _response['ts']
 
+    # Метод запуска асинхронного цикла
+    # TODO: Адаптация к новым версиям API
     async def __main(self, loop):
         _last = None
         _s, _ts = await self.__getLongPoll()
@@ -115,23 +121,27 @@ class API:
                 await asyncio.sleep(2)
                 continue
             for upd in _resp['updates']:
+                print(upd)
                 if upd is not _last:
                     _last = upd
                     if upd['type'] == 'message_new':
-                        if 'text' in upd['object']:
-                            if ' ' not in str(upd['object']['text']):
-                                if str(upd['object']['text']) in self.__hcom:
-                                    if self.__hcom[upd['object']['text']][1] == 0:
-                                        loop.create_task(self.__hcom[upd['object']['text']][0](Message(upd['object'], self)))
+                        if 'text' in upd['object']['message']:
+                            if ' ' not in str(upd['object']['message']['text']):
+                                if str(upd['object']['message']['text']) in self.__hcom:
+                                    if self.__hcom[upd['object']['message']['text']][1] == 0:
+                                        loop.create_task(self.__hcom[upd['object']['message']['text']][0](
+                                            Message(upd['object']['message'], self)))
                                     else:
-                                        loop.create_task(self.__hcom[upd['object']['text']][0](Message(upd['object'], self), []))
+                                        loop.create_task(self.__hcom[upd['object']['message']['text']][0](
+                                            Message(upd['object']['message'], self), []))
                             else:
-                                _message = str(upd['object']['text'])
-                                _message = re.sub(r'\[id\d+\|.*\]', '', _message).strip()
+                                _message = str(upd['object']['message']['text'])
+                                _message = re.sub(r'\[club\d+\|.*\]', '', _message).strip()
                                 _message = _message.split(' ')
                                 if _message[0] in self.__hcom:
                                     if self.__hcom[_message[0]][1] == 0:
-                                        loop.create_task(self.__hcom[upd['object']['text']][0](Message(upd['object'], self)))
+                                        loop.create_task(self.__hcom[upd['object']['message']['text']][0](
+                                            Message(upd['object']['message'], self)))
                                     else:
                                         loop.create_task()
             # print(_resp)
@@ -154,6 +164,7 @@ class Message:
         self.text = data['text']
         self.user_id = data['from_id']
         self.peer = data['peer_id']
+        self.ischat = True if self.peer >= 2000000000 else False
         self.id = data['id']
 
     async def reply(self, text: str, **kwargs) -> int or dict:
