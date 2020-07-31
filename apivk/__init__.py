@@ -73,7 +73,7 @@ class API:
 
     # декоратор для методов сообщений
     def MessageHandler(self, *args, arg=0, _all=False):
-        if callable(args[0]) or  (not isinstance(args[0], list) and not isinstance(args[0], str)):
+        if callable(args[0]) or (not isinstance(args[0], list) and not isinstance(args[0], str)):
             raise TypeError("You must add commands in list or one command (String) to positional arguments")
 
         # if not isinstance(args[0], list) and not isinstance(args[0], str):
