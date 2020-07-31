@@ -6,6 +6,7 @@ from requests import get
 # from os.path import exists
 from typing import Tuple, List
 
+# TODO: example program
 if __name__ == '__main__':
     # if exists('bot.py'):
     print('You cannot run this module.')
@@ -21,11 +22,10 @@ if __name__ == '__main__':
     #                    "    await msg.reply('test!')")
     quit()
 
-"""
-class APIError(Exception):
-    def __init__(self, *args):
-        super().__init__(self, *args)
-"""
+
+# class APIError(Exception):
+#     def __init__(self, *args):
+#         super().__init__(self, *args)
 
 
 class API:
@@ -46,6 +46,8 @@ class API:
 
                 return lambda _r=_r, _token=_token, **_kwargs: self.api.request(form(_kwargs, _r), token=_token)
 
+        # проверка работоспособности токена
+        # TODO: проверка прав токена & проверка прав в зависимости от используемых методов (future)
         with get(f'https://api.vk.com/method/utils.getServerTime?access_token={token}&v={v}') as _req:
             assert 'error' not in json.loads(_req.text)
 
@@ -71,24 +73,25 @@ class API:
 
     # декоратор для методов сообщений
     def MessageHandler(self, *args, arg=0, _all=False):
-        if callable(args[0]):
+        if callable(args[0]) or  (not isinstance(args[0], list) and not isinstance(args[0], str)):
             raise TypeError("You must add commands in list or one command (String) to positional arguments")
-        if not isinstance(args[0], list) and not isinstance(args[0], str):
-            raise TypeError("You must add commands in list or one command (String) to positional arguments")
+
+        # if not isinstance(args[0], list) and not isinstance(args[0], str):
+        #     raise TypeError("You must add commands in list or one command (String) to positional arguments")
 
         def binder(f):
             # assert callable(f) or asyncio.iscoroutinefunction(f)
+            # проверка на асинхронность функции обработки сообщения
             assert asyncio.iscoroutinefunction(f)
             if isinstance(args[0], list):
                 print([args[0].pop(_i[0]) for _i in enumerate([_j for _j in args[0] if _j in self.__hcom.keys()])])
                 for _i in args[0]:
-                    # self.__hcom.update({_i: (f, arg, asyncio.iscoroutinefunction(f))})
                     self.__hcom.update({_i: (f, arg)})
             else:
                 # self.__hcom.update({args[0]: (f, arg, asyncio.iscoroutinefunction(f))}) if args[0] not in
                 # self.__hcom else None
                 self.__hcom.update({args[0]: (f, arg)}) if args[0] not in self.__hcom else None
-            return lambda: print('This method is used in APIVK and blocked')
+            return lambda: print('This method is used in apivk')
 
         return binder
 
@@ -114,6 +117,7 @@ class API:
         _last = None
         _s, _ts = await self.__getLongPoll()
         while True:
+            # TODO: debug prints
             print(_s + 'ts=' + str(_ts))
             _resp = await self.__request(str(_s + 'wait=25&ts=' + str(_ts)))
             if "failed" in _resp:
@@ -126,6 +130,8 @@ class API:
                     _last = upd
                     if upd['type'] == 'message_new':
                         if 'text' in upd['object']['message']:
+                            # ветка в случае отсутствия аргументов в сообщении
+                            # TODO: !!! blank message handling
                             if ' ' not in str(upd['object']['message']['text']):
                                 if str(upd['object']['message']['text']) in self.__hcom:
                                     if self.__hcom[upd['object']['message']['text']][1] == 0:
@@ -136,14 +142,20 @@ class API:
                                             Message(upd['object']['message'], self), []))
                             else:
                                 _message = str(upd['object']['message']['text'])
-                                _message = re.sub(r'\[club\d+\|.*\]', '', _message).strip()
-                                _message = _message.split(' ')
+                                # удаление пуша (если есть)
+                                _message = re.sub(r'\[club\d+\|.*\]', '', _message).strip().split(' ')
                                 if _message[0] in self.__hcom:
                                     if self.__hcom[_message[0]][1] == 0:
-                                        loop.create_task(self.__hcom[upd['object']['message']['text']][0](
+                                        # loop.create_task(self.__hcom[upd['object']['message']['text']][0](
+                                        #     Message(upd['object']['message'], self)))
+                                        # Добавление в Event Loop метода-обертки сообщения, передача объекта Message
+                                        loop.create_task(self.__hcom[_message[0]][0](
                                             Message(upd['object']['message'], self)))
                                     else:
-                                        loop.create_task()
+                                        pass
+                                        # ветка в случае ивента, не являющегося message_new
+                                        # TODO: another events handling
+                                        # loop.create_task()
             # print(_resp)
             # print(_ts)
             _ts = str(int(_ts) + 1)
@@ -167,24 +179,29 @@ class Message:
         self.ischat = True if self.peer >= 2000000000 else False
         self.id = data['id']
 
-    async def reply(self, text: str, **kwargs) -> int or dict:
+    # метод ответа на сообщение
+    async def reply(self, text: str, forward=False, **kwargs) -> int or dict:
         _kw = ''
+        # добавление доп. параметров
         if len(kwargs) != 0:
             _kw += '&'
             for k, v in kwargs.items():
                 _kw += str(k) + '=' + str(v) + '&'
-            _kw = _kw[:-1]
+            _kw = _kw[:-1]  # удаление последнего символа &
         _r = await self.__apiobj.request(f'messages.send?'
-                                         f'message={text}&'
+                                         f'message={text}&{f"reply_to={self.id}&" if forward else ""}'
                                          f'{"user_id=" + str(self.user_id) if self.peer < 2000000000 else "chat_id=" + str(self.peer - 2000000000)}&'
                                          f'random_id=0{_kw}')
+        # возврат id сообщения в случае удачи
         return int(_r['response']) if len(_r) == 1 and 'response' in _r else _r
 
     async def read(self):
+        # метод markAsRead работает исключительно для личных бесед
         if not self.peer >= 2000000000:
             await self.__apiobj.request(f'messages.markAsRead?peer_id={self.peer}')
         else:
             print('message with id', self.id, 'is in the conversation')
 
+    # получение любых параметров объекта Message
     def __getattr__(self, item):
         return self.__data[item] if item in self.__data else None
